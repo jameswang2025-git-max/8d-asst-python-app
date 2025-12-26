@@ -4,3 +4,5 @@ openai
 jinja2
 python-docx
 pdfminer.six
+supabase
+python-dotenv

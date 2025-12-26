@@ -7,6 +7,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 import base64
 from io import BytesIO
 import os
+# from supabase import create_client
 
 # --- 导入 Word 导出库 ---
 from docx import Document
@@ -255,17 +256,22 @@ REPORT_TEMPLATE_HTML = """
         <table class="section-table">
             <tr><td>**项目标题**</td><td>{{ data.d0.title }}</td></tr>
             <tr><td>**组长 (D1)**</td><td>{{ data.d1.leader }}</td></tr>
-            <tr><td>**问题 (What)**</td><td>{{ data.d2.what }}</td></tr>
-            <tr><td>**发生地点 (Where)**</td><td>{{ data.d2.where }}</td></tr>
+            <tr><td>**What (何事)**</td><td>{{ data.d2.what }}</td></tr>
+            <tr><td>**When (何时)**</td><td>{{ data.d2.when }}</td></tr>
+            <tr><td>**Where (何处)**</td><td>{{ data.d2.where }}</td></tr>
+            <tr><td>**Who (何人)**</td><td>{{ data.d2.who }}</td></tr>
+            <tr><td>**Why (初步原因)**</td><td>{{ data.d2.why }}</td></tr>
+            <tr><td>**How (如何确认)**</td><td>{{ data.d2.how }}</td></tr>
+            <tr><td>**How Much (影响程度)**</td><td>{{ data.d2.how_much }}</td></tr>
             <tr><td>**详细描述**</td><td>{{ data.d2.desc }}</td></tr>
         </table>
 
         <h2>D3: 临时围堵措施 (ICA)</h2>
         {% if data.d3 %}
         <table>
-            <tr><th>#</th><th>措施内容</th></tr>
+            <tr><th>措施内容</th><th>状态</th></tr>
             {% for item in data.d3 %}
-            <tr><td>{{ loop.index }}</td><td>{{ item }}</td></tr>
+            <tr><td>{{ item.action }}</td><td>{{ item.status }}</td></tr>
             {% endfor %}
         </table>
         {% else %}
@@ -280,7 +286,7 @@ REPORT_TEMPLATE_HTML = """
             <tr><td>**根本原因总结**</td><td>{{ data.d4.root_cause }}</td></tr>
         </table>
 
-        <h2>D5/D6: 永久对策与实施</h2>
+        <h2>D5: 永久对策</h2>
         {% if permanent_actions|length > 0 %}
         <table>
             <tr><th>对策内容</th><th>实施日期</th><th>状态</th></tr>
@@ -295,6 +301,17 @@ REPORT_TEMPLATE_HTML = """
         {% else %}
         <p>未录入永久对策。</p>
         {% endif %}
+
+        <h2>D6: 验证结果</h2>
+        <table class="section-table">
+            <tr><td>**验证结果和数据总结**</td><td>{{ data.d6.verification if data.d6.verification else 'N/A' }}</td></tr>
+        </table>
+
+        <h2>D6: 验证与确认</h2>
+        <table class="section-table">
+            <tr><td>**验证方法**</td><td>{{ data.d6.verification }}</td></tr>
+            <tr><td>**验证结果与数据**</td><td>{{ data.d6.results }}</td></tr>
+        </table>
 
         <h2>D7 & D8: 预防与总结</h2>
         <table class="section-table">
@@ -317,10 +334,11 @@ if 'data' not in st.session_state:
     st.session_state.data = {
         'd0': {'title': '', 'customer': ''}, 
         'd1': {'leader': '', 'members': ''}, 
-        'd2': {'what': '', 'where': '', 'desc': ''}, 
+        'd2': {'what': '', 'where': '', 'desc': '', 'when': '', 'who': '', 'why': '', 'how': '', 'how_much': ''}, 
         'd3': [], 
         'd4': {'whys': ['', '', '', '', ''], 'root_cause': '', 'ai_analysis': None}, 
         'd5': [], 
+        'd6': {'verification': '', 'results': ''}, 
         'd7': {'fmea': False, 'cp': False, 'sop': False}, 
         'd8': {}
     }
@@ -364,6 +382,99 @@ with st.sidebar:
                                                     value=st.session_state.get('api_key', ''))
         base_url = "https://api.deepseek.com" 
     
+    with st.expander("🔗 Supabase 配置", expanded=False):
+        # 尝试从 Streamlit secrets 或环境变量读取
+        st.session_state['supabase_url'] = st.text_input("Supabase URL", value=st.session_state.get('supabase_url', st.secrets.get("SUPABASE_URL", os.getenv("SUPABASE_URL", ""))))
+        st.session_state['supabase_key'] = st.text_input("Supabase Key", type="password", value=st.session_state.get('supabase_key', st.secrets.get("SUPABASE_KEY", os.getenv("SUPABASE_KEY", ""))))
+
+        if st.button("🔌 测试 Supabase 连接"):
+            st.warning("Supabase 功能暂时禁用，请检查依赖。")
+
+        if st.button("➕ 插入示例报告到 reports 表"):
+            st.warning("Supabase 功能暂时禁用，请检查依赖。")
+    
+    with st.expander("💾 本地存储配置", expanded=True):
+        st.markdown("**📝 本地JSON文件存储** - 无需网络，无需配置")
+        st.info("💡 本地存储会将报告保存为JSON文件到项目目录，无需Supabase或网络连接。")
+        
+        # 本地存储文件路径
+        local_storage_file = st.text_input("存储文件路径", value="reports_data.json", help="报告数据将保存到此JSON文件中")
+        
+        if st.button("💾 创建本地示例报告"):
+            try:
+                import json
+                import os
+                
+                # 准备示例数据
+                sample_report = {
+                    "title": "示例8D报告",
+                    "content": "这是本地存储的示例8D报告",
+                    "created_at": datetime.now().isoformat(),
+                    "data": {
+                        "d0": {"title": "示例项目", "customer": "示例客户"},
+                        "d1": {"leader": "张三", "members": "李四，王五"},
+                        "d2": {"what": "产品质量问题", "where": "生产车间", "desc": "详细问题描述"},
+                        "d3": ["临时措施1", "临时措施2"],
+                        "d4": {"whys": ["为什么1", "为什么2", "为什么3", "为什么4", "为什么5"], "root_cause": "根本原因"},
+                        "d5": [{"action": "永久对策1", "date": "2025-12-31", "status": "Open"}],
+                        "d7": {"fmea": True, "cp": False, "sop": True},
+                        "d8": {}
+                    }
+                }
+                
+                # 读取现有数据或创建新文件
+                if os.path.exists(local_storage_file):
+                    try:
+                        with open(local_storage_file, 'r', encoding='utf-8') as f:
+                            reports_data = json.load(f)
+                    except:
+                        reports_data = {"reports": []}
+                else:
+                    reports_data = {"reports": []}
+                
+                # 添加新报告
+                reports_data["reports"].append(sample_report)
+                
+                # 保存到文件
+                with open(local_storage_file, 'w', encoding='utf-8') as f:
+                    json.dump(reports_data, f, ensure_ascii=False, indent=2)
+                
+                st.success(f"✅ 示例报告已保存到本地文件: {local_storage_file}")
+                st.json(sample_report)
+                
+            except Exception as e:
+                st.error(f"❌ 本地存储失败: {e}")
+        
+        if st.button("📂 查看本地报告列表"):
+            try:
+                import json
+                import os
+                
+                if os.path.exists(local_storage_file):
+                    with open(local_storage_file, 'r', encoding='utf-8') as f:
+                        reports_data = json.load(f)
+                    
+                    reports = reports_data.get("reports", [])
+                    if reports:
+                        st.success(f"📋 找到 {len(reports)} 个本地报告:")
+                        for i, report in enumerate(reports):
+                            with st.expander(f"报告 {i+1}: {report.get('title', '无标题')}"):
+                                st.write(f"**创建时间:** {report.get('created_at', '未知')}")
+                                st.write(f"**内容:** {report.get('content', '无内容')}")
+                                if st.button(f"📥 加载此报告到应用", key=f"load_{i}"):
+                                    # 将报告数据加载到session_state
+                                    if 'data' in report:
+                                        st.session_state.data = report['data']
+                                        st.success("✅ 报告已加载到应用中！请切换到'新建/编辑8D报告'功能查看。")
+                                        st.rerun()
+                    else:
+                        st.info("📭 本地存储文件中暂无报告数据")
+                else:
+                    st.info(f"📁 本地文件 {local_storage_file} 不存在，请先创建示例报告")
+                    
+            except Exception as e:
+                st.error(f"❌ 读取本地报告失败: {e}")
+    
     st.markdown("---")
     
     # --- 核心功能选择 (使用 Selectbox 进行分组) ---
@@ -381,7 +492,7 @@ if main_function == "1. 📝 新建/编辑 8D 报告":
     
     # --- 顶部导航栏 (使用 st.tabs 替代 st.radio) ---
     tab_names = ["D0: 准备", "D1: 团队", "D2: 问题描述", "D3: 围堵", 
-                 "D4: 根本原因(AI)", "D5/D6: 对策", "D7: 预防", "D8: 报告生成"]
+                 "D4: 根本原因", "D5: 对策", "D6: 验证", "D7: 预防", "D8: 报告生成"]
     tabs = st.tabs(tab_names)
     
     # 使用索引来判断当前所在的 Tab
@@ -412,53 +523,77 @@ if main_function == "1. 📝 新建/编辑 8D 报告":
                 st.session_state.data['d1']['members'] = input_members
 
             elif step == "D2: 问题描述":
-                section("D2: 问题描述 (AI分析的基础)")
-                st.info("💡 提示：这里写得越详细，AI 分析得越准！")
+                section("D2: 问题描述 (5W2H)")
+                st.info("💡 提示：填写 5W2H 表格，越详细越好！")
                 
-                c1, c2 = st.columns(2)
+                # 5W2H 表格输入
+                w2h_data = {
+                    "What (何事)": st.session_state.data['d2'].get('what', ''),
+                    "When (何时)": st.session_state.data['d2'].get('when', ''),
+                    "Where (何处)": st.session_state.data['d2'].get('where', ''),
+                    "Who (何人)": st.session_state.data['d2'].get('who', ''),
+                    "Why (初步原因)": st.session_state.data['d2'].get('why', ''),
+                    "How (如何确认)": st.session_state.data['d2'].get('how', ''),
+                    "How Much (影响程度)": st.session_state.data['d2'].get('how_much', '')
+                }
                 
-                input_what = c1.text_input("发生了什么 (What)", value=st.session_state.data['d2'].get('what', ''))
-                input_where = c2.text_input("发生在哪里 (Where)", value=st.session_state.data['d2'].get('where', ''))
-                input_desc = st.text_area("详细描述整个过程", height=100, value=st.session_state.data['d2'].get('desc', ''))
+                # 显示为表格形式
+                st.markdown("### 5W2H 问题描述表")
+                df = pd.DataFrame(list(w2h_data.items()), columns=['要素', '内容'])
+                edited_df = st.data_editor(df, num_rows="fixed")
                 
-                st.session_state.data['d2']['what'] = input_what
-                st.session_state.data['d2']['where'] = input_where
-                st.session_state.data['d2']['desc'] = input_desc
+                # 更新 session_state
+                for i, row in edited_df.iterrows():
+                    key = list(w2h_data.keys())[i]
+                    if key == "What (何事)":
+                        st.session_state.data['d2']['what'] = row['内容']
+                    elif key == "When (何时)":
+                        st.session_state.data['d2']['when'] = row['内容']
+                    elif key == "Where (何处)":
+                        st.session_state.data['d2']['where'] = row['内容']
+                    elif key == "Who (何人)":
+                        st.session_state.data['d2']['who'] = row['内容']
+                    elif key == "Why (初步原因)":
+                        st.session_state.data['d2']['why'] = row['内容']
+                    elif key == "How (如何确认)":
+                        st.session_state.data['d2']['how'] = row['内容']
+                    elif key == "How Much (影响程度)":
+                        st.session_state.data['d2']['how_much'] = row['内容']
 
             elif step == "D3: 围堵":
-                section("D3: 临时措施")
+                section("D3: 临时围堵措施 (ICA)")
                 
-                new_ica = st.text_input("添加一条临时措施", key="new_ica_input")
-                if st.button("➕ 添加") and new_ica:
-                    st.session_state.data['d3'].append(new_ica)
-                    st.rerun() 
+                c1, c2 = st.columns([4, 1])
+                new_ica = c1.text_input("添加临时措施", key="new_ica_input")
+                if c2.button("➕ 添加", key="add_ica_button") and new_ica:
+                    st.session_state.data['d3'].append({"action": new_ica, "status": "Open"})
+                    st.rerun()
                     
                 if st.session_state.data['d3']:
-                    st.write("📋 **已添加措施列表：**")
-                    df = pd.DataFrame({'措施内容': st.session_state.data['d3']})
-                    st.table(df)
-                    
-                    if st.button("🗑️ 清空列表"):
-                        st.session_state.data['d3'] = []
-                        st.rerun()
+                    st.markdown("### 临时措施列表")
+                    df = pd.DataFrame(st.session_state.data['d3'])
+                    edited_df = st.data_editor(df, num_rows="dynamic", width='stretch', column_config={
+                        "action": st.column_config.TextColumn("措施内容", width="large"),
+                        "status": st.column_config.SelectboxColumn("状态", options=["Open", "Completed"], width="small")
+                    })
+                    st.session_state.data['d3'] = edited_df.to_dict('records')
 
-            elif step == "D4: 根本原因(AI)":
-                section("D4: 根本原因分析 (DeepSeek 驱动)")
+            elif step == "D4: 根本原因":
+                section("D4: 根本原因分析 (5 Why)")
                 
                 d2_info = st.session_state.data['d2']
-                problem_text = f"问题：{d2_info.get('what', '')}, 详情：{d2_info.get('desc', '')}"
+                problem_text = f"问题：{d2_info.get('what', '')}, 详情：{d2_info.get('why', '')}"
                 api_key = st.session_state.get('api_key')
                 
                 if not d2_info.get('what'):
                     st.warning("⚠️ 请先去 D2 步骤填写问题描述！")
                 else:
-                    # === AI 按钮 ===
-                    if st.button("🤖 呼叫 DeepSeek 帮我分析", type="primary"):
+                    if st.button("🤖 AI 分析 5 Why", type="primary"):
                         if not api_key:
                             st.error("请在左侧边栏填入你的 DeepSeek API Key")
                         else:
                             try:
-                                with st.spinner("DeepSeek 正在思考中..."):
+                                with st.spinner("DeepSeek 正在分析..."):
                                     client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
                                     
                                     prompt = f"""
@@ -479,45 +614,48 @@ if main_function == "1. 📝 新建/编辑 8D 报告":
                                     st.session_state.data['d4']['ai_analysis'] = result
                                     
                             except Exception as e:
-                                st.error(f"AI 调用出错啦: {e}")
+                                st.error(f"AI 调用出错: {e}")
 
-                    # === 显示结果与一键采纳 ===
                     if st.session_state.data['d4'].get('ai_analysis'):
                         ai_res = st.session_state.data['d4']['ai_analysis']
                         
-                        st.success("分析完成！")
+                        st.success("AI 分析完成！")
                         st.write("AI 建议的 5 Whys 路径：")
                         for i, w in enumerate(ai_res['five_whys']):
                             st.info(f"{i+1}. {w}")
                         
-                        if st.button("⚡ 觉得不错，一键填入下方表格"):
+                        if st.button("⚡ 一键采纳"):
                             for i in range(5):
                                 if i < len(ai_res['five_whys']):
                                     st.session_state.data['d4']['whys'][i] = ai_res['five_whys'][i]
                             st.session_state.data['d4']['root_cause'] = ai_res['root_cause']
-                            st.session_state.data['d4']['ai_analysis'] = None # 清除显示
-                            st.rerun() 
+                            st.session_state.data['d4']['ai_analysis'] = None
+                            st.rerun()
 
-                st.markdown("---")
-                st.write("📝 **正式 5 Whys 记录表**")
-                
+                st.markdown("### 5 Why 分析表")
+                whys_data = []
                 for i in range(5):
-                    val = st.session_state.data['d4']['whys'][i]
-                    new_val = st.text_input(f"Why {i+1}", value=val)
-                    st.session_state.data['d4']['whys'][i] = new_val
+                    whys_data.append({"Why": f"Why {i+1}", "内容": st.session_state.data['d4']['whys'][i]})
                 
-                saved_root = st.session_state.data['d4'].get('root_cause', '')
-                new_root = st.text_area("根本原因总结", value=saved_root)
-                st.session_state.data['d4']['root_cause'] = new_root
+                df = pd.DataFrame(whys_data)
+                edited_df = st.data_editor(df, num_rows="fixed", width='stretch', column_config={
+                    "Why": st.column_config.TextColumn("步骤", width="small"),
+                    "内容": st.column_config.TextColumn("分析内容", width="large")
+                })
+                
+                for i, row in edited_df.iterrows():
+                    st.session_state.data['d4']['whys'][i] = row['内容']
+                
+                root_cause = st.text_area("根本原因总结", value=st.session_state.data['d4'].get('root_cause', ''), height=80)
+                st.session_state.data['d4']['root_cause'] = root_cause
 
-            elif step == "D5/D6: 对策":
-                section("D5/D6: 永久对策与实施")
+            elif step == "D5: 对策":
+                section("D5: 永久对策 (PCA)")
                 
-                c1, c2 = st.columns([3, 1])
+                c1, c2, c3 = st.columns([3, 1, 1])
                 new_pca = c1.text_input("新增永久对策", key="new_pca_input")
-                action_date = c2.date_input("计划实施日期", value=date.today() + timedelta(days=14))
-                
-                if st.button("➕ 添加 PCA") and new_pca:
+                action_date = c2.date_input("计划日期", value=date.today() + timedelta(days=14))
+                if c3.button("➕ 添加", key="add_pca_button") and new_pca:
                     st.session_state.data['d5'].append({
                         "action": new_pca, 
                         "date": action_date.strftime('%Y-%m-%d'),
@@ -526,29 +664,23 @@ if main_function == "1. 📝 新建/编辑 8D 报告":
                     st.rerun()
                     
                 if st.session_state.data['d5']:
-                    st.markdown("### 措施列表 (点击复选框标记完成)")
-                    
-                    updated_d5 = []
-                    for i, action in enumerate(st.session_state.data['d5']):
-                        col1, col2, col3 = st.columns([0.1, 4, 1])
-                        
-                        is_completed = col1.checkbox("", value=action.get('status') == 'Completed', key=f"d5_chk_{i}")
-                        
-                        # 更新状态
-                        if is_completed:
-                             action['status'] = 'Completed'
-                        elif action.get('status') == 'Completed' and not is_completed:
-                             action['status'] = 'Open'
+                    st.markdown("### 永久对策列表")
+                    df = pd.DataFrame(st.session_state.data['d5'])
+                    edited_df = st.data_editor(df, num_rows="dynamic", width='stretch', column_config={
+                        "action": st.column_config.TextColumn("对策内容", width="large"),
+                        "date": st.column_config.DateColumn("计划日期", width="medium"),
+                        "status": st.column_config.SelectboxColumn("状态", options=["Open", "Completed"], width="small")
+                    })
+                    st.session_state.data['d5'] = edited_df.to_dict('records')
 
-                        # 显示内容和日期
-                        col2.markdown(f"**{action['action']}**")
-                        # 重新计算状态显示
-                        status_class, status_display = get_action_status(action.get('date', ''), action.get('status', 'Open'))
-                        col3.markdown(f"**{status_display}** ({action['date']})")
-                        
-                        updated_d5.append(action)
-                    
-                    st.session_state.data['d5'] = updated_d5
+            elif step == "D6: 验证":
+                section("D6: 验证与确认")
+                
+                verification = st.text_area("验证方法", value=st.session_state.data['d6'].get('verification', ''), height=80)
+                results = st.text_area("验证结果与数据", value=st.session_state.data['d6'].get('results', ''), height=80)
+                
+                st.session_state.data['d6']['verification'] = verification
+                st.session_state.data['d6']['results'] = results
 
 
             elif step == "D7: 预防":
@@ -562,6 +694,54 @@ if main_function == "1. 📝 新建/编辑 8D 报告":
             elif step == "D8: 报告生成":
                 section("D8: 报告预览与导出")
                 st.info("💡 报告已按专业格式排版，并包含行动项的条件格式。")
+                
+                # --- 本地保存功能 ---
+                st.subheader("💾 保存报告到本地")
+                c1, c2 = st.columns([3, 1])
+                
+                save_title = c1.text_input("报告标题", value=st.session_state.data.get('d0', {}).get('title', ''), help="为您的报告设置一个标题")
+                save_description = c2.text_area("简短描述", value="", height=68, help="可选：添加报告的简短描述")
+                
+                if st.button("💾 保存到本地JSON文件", type="primary"):
+                    try:
+                        import json
+                        import os
+                        
+                        # 准备要保存的数据
+                        report_data = {
+                            "title": save_title or "未命名报告",
+                            "content": save_description or f"8D报告：{st.session_state.data.get('d0', {}).get('title', '无标题')}",
+                            "created_at": datetime.now().isoformat(),
+                            "data": st.session_state.data.copy()  # 保存完整的8D数据
+                        }
+                        
+                        # 本地存储文件路径（与侧边栏配置保持一致）
+                        local_storage_file = "reports_data.json"
+                        
+                        # 读取现有数据或创建新文件
+                        if os.path.exists(local_storage_file):
+                            try:
+                                with open(local_storage_file, 'r', encoding='utf-8') as f:
+                                    reports_data = json.load(f)
+                            except:
+                                reports_data = {"reports": []}
+                        else:
+                            reports_data = {"reports": []}
+                        
+                        # 添加新报告
+                        reports_data["reports"].append(report_data)
+                        
+                        # 保存到文件
+                        with open(local_storage_file, 'w', encoding='utf-8') as f:
+                            json.dump(reports_data, f, ensure_ascii=False, indent=2)
+                        
+                        st.success(f"✅ 报告已成功保存到本地文件: {local_storage_file}")
+                        st.info("💡 您可以在侧边栏的'本地存储配置'中查看和管理所有保存的报告。")
+                        
+                    except Exception as e:
+                        st.error(f"❌ 保存失败: {e}")
+                
+                st.markdown("---")
                 
                 # --- 翻译和格式化选项 ---
                 st.subheader("🌐 报告导出选项")
@@ -608,25 +788,38 @@ if main_function == "1. 📝 新建/编辑 8D 报告":
                     else:
                         # 提取 Markdown 格式的报告核心内容
                         markdown_actions = '\n'.join([f'- {act["action"]} (Due: {act["date"]}, Status: {act["status_display"]})' for act in permanent_actions_processed])
+                        fmea_status = '✅' if d['d7']['fmea'] else '❌'
+                        cp_status = '✅' if d['d7']['cp'] else '❌'
+                        sop_status = '✅' if d['d7']['sop'] else '❌'
+                        d3_content = '- ' + '  \n- '.join(d['d3']) if d['d3'] else 'N/A'
                         markdown_content = f"""
                         # 8D Report: {d["d0"]["title"]}
                         
                         ## D1 & D2: Team and Problem Description
                         - Leader: {d["d1"]["leader"]}
-                        - Problem (What): {d["d2"]["what"]}
+                        - What: {d["d2"]["what"]}
+                        - When: {d["d2"]["when"]}
+                        - Where: {d["d2"]["where"]}
+                        - Who: {d["d2"]["who"]}
+                        - Why: {d["d2"]["why"]}
+                        - How: {d["d2"]["how"]}
+                        - How Much: {d["d2"]["how_much"]}
                         - Detailed Description: {d["d2"]["desc"]}
 
                         ## D3: Interim Containment Action (ICA)
-                        {'- ' + '  \n- '.join(d['d3']) if d['d3'] else 'N/A'}
+                        {d3_content}
 
                         ## D4: Root Cause Analysis (RCA)
                         - Root Cause Summary: {d["d4"]["root_cause"]}
 
-                        ## D5/D6: Permanent Corrective Actions (PCA) & Verification
+                        ## D5: Permanent Corrective Actions (PCA)
                         {markdown_actions if permanent_actions_processed else 'N/A'}
                         
+                        ## D6: Verification
+                        - Verification Results: {d.get("d6", {}).get("verification", "N/A")}
+                        
                         ## D7 & D8: Prevention and Conclusion
-                        - Standardization Check: FMEA: {'✅' if d['d7']['fmea'] else '❌'} | CP: {'✅' if d['d7']['cp'] else '❌'} | SOP: {'✅' if d['d7']['sop'] else '❌'}
+                        - Standardization Check: FMEA: {fmea_status} | CP: {cp_status} | SOP: {sop_status}
                         - Conclusion: Report Closed.
                         """
                         
@@ -641,11 +834,12 @@ if main_function == "1. 📝 新建/编辑 8D 报告":
                                 st.markdown("---")
                                 
                                 # 替换最终导出的 HTML 为翻译后的 HTML 内容
+                                css_styles = REPORT_TEMPLATE_HTML.split('<style>')[1].split('</style>')[0]
                                 final_html_to_export = f"""
                                 <html><head><style>
                                 body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 20px; font-size: 11pt; }}
                                 /* 从原模板复制 A4 样式 */
-                                {REPORT_TEMPLATE_HTML.split('<style>')[1].split('</style>')[0]}
+                                {css_styles}
                                 </style></head>
                                 <body><div class="container">{translated_markdown}</div></body></html>
                                 """
@@ -897,105 +1091,119 @@ elif main_function == "2. 🔎 智能审计外部报告":
         
         # --- 根据选择，确定最终显示和导出的内容 ---
         is_translated_content = (target_lang_text != "中文 (默认)") and st.session_state.audit_result.get('translated_eval') is not None
-        
+
+        # 创建左右对比视图
+        col_left, col_right = st.columns(2)
+
+        with col_left:
+            st.subheader("📑 结构化 8D 报告预览")
+
+        with col_right:
+            st.subheader("🧐 8D 报告阶段性评估")
+
         if is_translated_content:
-            
+
             if st.session_state.audit_result['translated_data']:
                 # 成功分割
-                st.subheader(f"📑 结构化 8D 报告预览 ({target_lang_text} 翻译结果)")
-                st.markdown(st.session_state.audit_result['translated_data'])
-                
-                st.markdown("---")
-                st.subheader(f"🧐 8D 报告阶段性评估 ({target_lang_text} 翻译结果)")
-                st.markdown(st.session_state.audit_result['translated_eval'])
-                
+                with col_left:
+                    st.markdown(f"**({target_lang_text} 翻译结果)**")
+                    st.markdown(st.session_state.audit_result['translated_data'])
+
+                with col_right:
+                    st.markdown(f"**({target_lang_text} 翻译结果)**")
+                    st.markdown(st.session_state.audit_result['translated_eval'])
+
                 export_data_for_word = st.session_state.audit_result['translated_data']
                 export_eval_for_word = st.session_state.audit_result['translated_eval']
-                
+
             else:
                 # 分割失败，显示全部内容
-                st.subheader(f"📑 结构化数据 & 评估合并报告 ({target_lang_text} 翻译结果)")
-                st.markdown(st.session_state.audit_result['translated_eval'])
-                
+                with col_left:
+                    st.subheader(f"📑 结构化数据 & 评估合并报告 ({target_lang_text} 翻译结果)")
+                    st.markdown(st.session_state.audit_result['translated_eval'])
+
+                with col_right:
+                    st.markdown("*(评估内容已合并在左侧)*")
+
                 export_data_for_word = st.session_state.audit_result['translated_eval']
-                export_eval_for_word = "" 
-            
+                export_eval_for_word = ""
+
         else:
             # --- 优化后的原始中文内容展示 ---
-            st.subheader("📑 结构化 8D 报告预览 (原始中文)")
-            
-            # --- D1 (组长) & D8 (结论) ---
-            st.markdown("### 👥 D1 团队 & D8 结论")
-            d1_d8_data = {
-                "阶段": ["D1 (组长)", "D8 (结论)"],
-                "内容": [
-                    extracted_data.get("D1_TeamLeader", "N/A"),
-                    extracted_data.get("D8_Conclusion", "N/A")
-                ]
-            }
-            st.table(pd.DataFrame(d1_d8_data).set_index('阶段'))
-            
-            # --- D2 (5W2H) ---
-            st.markdown("### ❓ D2 问题描述 (5W2H)")
-            d2_5w2h = extracted_data.get("D2_5W2H", {})
-            d2_items = {
-                "要素": ["What (何事)", "When (何时)", "Where (何处)", "Who (何人)", "Why (初步原因)", "How (如何确认)", "HowMuch (影响)"],
-                "内容": [
-                    d2_5w2h.get("What", "N/A"),
-                    d2_5w2h.get("When", "N/A"),
-                    d2_5w2h.get("Where", "N/A"),
-                    d2_5w2h.get("Who", "N/A"),
-                    d2_5w2h.get("Why", "N/A"),
-                    d2_5w2h.get("How", "N/A"),
-                    d2_5w2h.get("HowMuch", "N/A")
-                ]
-            }
-            st.table(pd.DataFrame(d2_items).set_index('要素'))
+            with col_left:
+                st.markdown("**(原始中文)**")
+
+                # --- D1 (组长) & D8 (结论) ---
+                st.markdown("### 👥 D1 团队 & D8 结论")
+                d1_d8_data = {
+                    "阶段": ["D1 (组长)", "D8 (结论)"],
+                    "内容": [
+                        extracted_data.get("D1_TeamLeader", "N/A"),
+                        extracted_data.get("D8_Conclusion", "N/A")
+                    ]
+                }
+                st.table(pd.DataFrame(d1_d8_data).set_index('阶段'))
+
+                # --- D2 (5W2H) ---
+                st.markdown("### ❓ D2 问题描述 (5W2H)")
+                d2_5w2h = extracted_data.get("D2_5W2H", {})
+                d2_items = {
+                    "要素": ["What (何事)", "When (何时)", "Where (何处)", "Who (何人)", "Why (初步原因)", "How (如何确认)", "HowMuch (影响)"],
+                    "内容": [
+                        d2_5w2h.get("What", "N/A"),
+                        d2_5w2h.get("When", "N/A"),
+                        d2_5w2h.get("Where", "N/A"),
+                        d2_5w2h.get("Who", "N/A"),
+                        d2_5w2h.get("Why", "N/A"),
+                        d2_5w2h.get("How", "N/A"),
+                        d2_5w2h.get("HowMuch", "N/A")
+                    ]
+                }
+                st.table(pd.DataFrame(d2_items).set_index('要素'))
 
 
-            # --- D4 (根本原因 - 紧凑化展示) ---
-            st.markdown("### 🔬 D4 根本原因 (发生与逃逸)")
-            d4_root = extracted_data.get("D4_RootCause", {})
-            st.markdown(f"**发生根本原因 (Occurrence):** {d4_root.get('OccurrenceRootCause', 'N/A')}")
-            st.markdown(f"**逃逸根本原因 (Escape):** {d4_root.get('EscapeRootCause', 'N/A')}")
-            
-            # --- D3/D5/D6 行动项表格 ---
-            st.markdown("### 🛠️ D3/D5/D6 行动项与验证")
-            
-            # 1. D3 表格
-            st.markdown("##### D3 临时围堵措施 (ICA)")
-            d3_actions = extracted_data.get("D3_ICA", [])
-            if d3_actions and isinstance(d3_actions, list) and d3_actions[0].get("action"):
-                df_d3 = pd.DataFrame(d3_actions)
-                # 确保 Owner, DueDate, Status 存在，如果 AI 无法提取，则为 N/A 或 Open
-                df_d3 = df_d3.rename(columns={'action': '措施内容', 'owner': '负责人', 'dueDate': '计划日期', 'status': '状态'})
-                st.dataframe(df_d3)
-            else:
-                st.markdown("未提取到 D3 临时措施或格式不匹配。")
+                # --- D4 (根本原因 - 紧凑化展示) ---
+                st.markdown("### 🔬 D4 根本原因 (发生与逃逸)")
+                d4_root = extracted_data.get("D4_RootCause", {})
+                st.markdown(f"**发生根本原因 (Occurrence):** {d4_root.get('OccurrenceRootCause', 'N/A')}")
+                st.markdown(f"**逃逸根本原因 (Escape):** {d4_root.get('EscapeRootCause', 'N/A')}")
+
+                # --- D3/D5/D6 行动项表格 ---
+                st.markdown("### 🛠️ D3/D5/D6 行动项与验证")
+
+                # 1. D3 表格
+                st.markdown("##### D3 临时围堵措施 (ICA)")
+                d3_actions = extracted_data.get("D3_ICA", [])
+                if d3_actions and isinstance(d3_actions, list) and d3_actions[0].get("action"):
+                    df_d3 = pd.DataFrame(d3_actions)
+                    # 确保 Owner, DueDate, Status 存在，如果 AI 无法提取，则为 N/A 或 Open
+                    df_d3 = df_d3.rename(columns={'action': '措施内容', 'owner': '负责人', 'dueDate': '计划日期', 'status': '状态'})
+                    st.dataframe(df_d3)
+                else:
+                    st.markdown("未提取到 D3 临时措施或格式不匹配。")
 
 
-            # 2. D5 表格
-            st.markdown("##### D5 永久对策 (PCA)")
-            d5_actions = extracted_data.get("D5_Actions", [])
-            if d5_actions and isinstance(d5_actions, list) and d5_actions[0].get("action"):
-                df_d5 = pd.DataFrame(d5_actions)
-                df_d5 = df_d5.rename(columns={'action': '对策内容', 'owner': '负责人', 'dueDate': '计划日期', 'status': '状态'})
-                st.dataframe(df_d5)
-            else:
-                st.markdown("未提取到 D5 永久对策或格式不匹配。")
-            
-            # 3. D6/D7
-            st.markdown("##### D6 验证结果")
-            st.markdown(extracted_data.get('D6_Verification', 'N/A'))
-            
-            st.markdown("##### D7 标准化")
-            st.markdown(extracted_data.get('D7_Standardization', 'N/A'))
-            
-            st.markdown("---")
+                # 2. D5 表格
+                st.markdown("##### D5 永久对策 (PCA)")
+                d5_actions = extracted_data.get("D5_Actions", [])
+                if d5_actions and isinstance(d5_actions, list) and d5_actions[0].get("action"):
+                    df_d5 = pd.DataFrame(d5_actions)
+                    df_d5 = df_d5.rename(columns={'action': '对策内容', 'owner': '负责人', 'dueDate': '计划日期', 'status': '状态'})
+                    st.dataframe(df_d5)
+                else:
+                    st.markdown("未提取到 D5 永久对策或格式不匹配。")
 
-            st.subheader("🧐 8D 报告阶段性评估 (原始中文)")
-            st.markdown(evaluation_markdown)
-            
+                # 3. D6/D7
+                st.markdown("##### D6 验证结果")
+                st.markdown(extracted_data.get('D6_Verification', 'N/A'))
+
+                st.markdown("##### D7 标准化")
+                st.markdown(extracted_data.get('D7_Standardization', 'N/A'))
+
+            with col_right:
+                st.markdown("**(原始中文)**")
+                st.markdown(evaluation_markdown)
+
             # 导出内容 (原始 JSON/Markdown)
             export_data_for_word = extracted_data
             export_eval_for_word = evaluation_markdown
